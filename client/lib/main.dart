@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const NotesApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class NotesApp extends StatelessWidget {
+  const NotesApp({super.key});
 
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Jerico\'s Notes',
       theme: ThemeData(
         // This is the theme of your application.
         //
@@ -31,13 +33,13 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomePage(title: 'Jerico\'s Notes'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key, required this.title});
 
   // This widget is the home page of your application. It is stateful, meaning
   // that it has a State object (defined below) that contains fields that affect
@@ -51,11 +53,18 @@ class MyHomePage extends StatefulWidget {
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _HomePageState extends State<HomePage> {
   int _counter = 0;
+  late Future<List<Note>> _futureNotes;
+
+  @override
+  void initState() {
+    super.initState();
+    _futureNotes = fetchNotes();
+  }
 
   void _incrementCounter() {
     setState(() {
@@ -65,6 +74,7 @@ class _MyHomePageState extends State<MyHomePage> {
       // _counter without calling setState(), then the build method would not be
       // called again, and so nothing would appear to happen.
       _counter++;
+      _futureNotes = fetchNotes();
     });
   }
 
@@ -112,6 +122,22 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
+            FutureBuilder<List<Note>>(
+              future: _futureNotes,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  return Flexible(
+                      child: ListView(
+                    children: snapshot.data!.map((e) => Text(e.title)).toList(),
+                  ));
+                } else if (snapshot.hasError) {
+                  return Text('${snapshot.error}');
+                }
+
+                // By default, show a loading spinner.
+                return const CircularProgressIndicator();
+              },
+            ),
           ],
         ),
       ),
@@ -121,5 +147,43 @@ class _MyHomePageState extends State<MyHomePage> {
         child: const Icon(Icons.add),
       ), // This trailing comma makes auto-formatting nicer for build methods.
     );
+  }
+}
+
+class Note {
+  final String title;
+  final String body;
+
+  const Note({
+    required this.title,
+    required this.body,
+  });
+
+  factory Note.fromJson(Map<String, dynamic> json) {
+    return switch (json) {
+      {
+        'title': String title,
+        'body': String body,
+      } =>
+        Note(title: title, body: body),
+      _ => throw const FormatException('Failed to load note.'),
+    };
+  }
+}
+
+Future<List<Note>> fetchNotes() async {
+  final response = await http.get(Uri.parse('http://localhost:8080/api/notes'));
+
+  if (response.statusCode == 200) {
+    // If the server did return a 200 OK response,
+    // then parse the JSON.
+    final List notesJson = json.decode(response.body);
+    final List<Note> notes =
+        notesJson.map((item) => Note.fromJson(item)).toList();
+    return notes;
+  } else {
+    // If the server did not return a 200 OK response,
+    // then throw an exception.
+    throw Exception('Failed to load note.');
   }
 }
